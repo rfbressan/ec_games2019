@@ -1,0 +1,160 @@
+---
+title: "Using R for Introductory Econometrics"
+author: "Rafael F. Bressan"
+date: "`r Sys.Date()`"
+output: html_document
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Site do livro: http://www.urfie.net/downloads.html
+
+```{r libraries}
+library(wooldridge) # Load data sets
+library(plm)
+library(estimatr)
+library(lmtest)
+library(car)
+library(MASS)
+library(tidyverse)
+library(pmdplyr)
+library(broom)
+library(forcats)
+library(purrr)
+library(stargazer)
+```
+
+# Carregando os dados 
+
+```{r data}
+data("gpa3")
+data("k401ksubs")
+data("hprice1")
+```
+
+# Análise descritiva
+
+Primeiro separar variáveis qualitativas das quantitativas
+
+```{r desc}
+quali <- gpa3 %>% 
+  select(term, season, frstsem, spring, female, black, football) %>% 
+  mutate_all(as.factor)
+
+quanti <- gpa3 %>% 
+  select(-c(term, season, frstsem, spring, female, black, football, white))
+
+```
+
+Descrição das qualitativas
+
+
+```{r quali, results = "asis"}
+desc_quali <- quali %>% 
+  pivot_longer(everything()) %>% 
+  count(name, value) %>% 
+  pivot_wider(names_from = value, values_from = n)
+
+stargazer(desc_quali, summary = FALSE, rownames = FALSE, type = "html")
+```
+
+Descrição das quantitativas
+
+```{r quanti, results = "asis"}
+desc_quanti <- quanti %>% 
+  pivot_longer(everything()) %>% 
+  group_by(name) %>% 
+  summarise(media = mean(value, na.rm = TRUE), 
+            mediana = median(value, na.rm = TRUE),
+            desv_pad = sd(value, na.rm = TRUE),
+            na = sum(is.na(value)))
+
+stargazer(desc_quanti, summary = FALSE, rownames = FALSE, type = "html",
+          digits = 2, digits.extra = 4)
+```
+
+
+## Boxplot para detecção de outliers
+
+```{r boxplot}
+quanti %>% 
+  select(-id) %>% 
+  mutate_all(scale) %>% 
+  pivot_longer(everything()) %>% 
+  ggplot(aes(x = name, y = value, color = name)) +
+  geom_boxplot() +
+  labs(title = "Boxplot",
+       y = "Valor",
+       x = "Variável") +
+  guides(color = FALSE) +
+  theme_classic()
+```
+
+
+# Multiple OLS Regression. Example 8.2
+
+```{r mols, results="asis"}
+reg <- gpa3 %>% 
+  filter(spring == 1) %>% 
+  lm(cumgpa ~ sat + hsperc + tothrs + female + black + white, 
+     data = .)
+
+stargazer(coeftest(reg), coeftest(reg, vcov. = hccm), type = "html",
+          column.labels = c("Padrão", "Robusto"),
+          align = TRUE,
+          no.space = TRUE,
+          title = "Regressão com erros padrão e robustos.")
+```
+
+Teste F para black=white=0
+
+```{r teste-f, results = "asis"}
+myH0 <- c("black", "white")
+
+stargazer(linearHypothesis(reg, myH0, vcov. = hccm), type = "html")
+```
+
+## Regressão robusta com `rlm` do pacote MASS
+
+```{r rlm, results = "asis"}
+rob_reg <- gpa3 %>% 
+  filter(spring == 1) %>% 
+  rlm(cumgpa ~ sat + hsperc + tothrs + female + black + white, 
+      data = .)
+
+stargazer(rob_reg, type = "html")
+```
+
+# Mínimos quadrados ponderados
+
+```{r wls, results = "asis"}
+wlsreg <- k401ksubs %>% 
+  filter(fsize == 1) %>% 
+  lm(nettfa ~ inc+I((age-25)^2)+male+e401k, 
+     weights = 1/inc,
+     data = .)
+
+stargazer(coeftest(wlsreg), coeftest(wlsreg, vcov. = hccm),
+          type = "html",
+          no.space = TRUE,
+          align = TRUE,
+          column.labels = c("Padrão", "Robusto"))
+```
+
+## Teste de Breusch-Pagan para heterocedasticidade
+
+```{r bp, resutls = "asis"}
+bp <- bptest(wlsreg)
+bp
+```
+
+## Teste RESET de Ramsey
+
+```{r reset, results = "asis"}
+orig <- hprice1 %>% 
+  lm(price ~ lotsize+sqrft+bdrms, data = .)
+resettest(orig)
+```
+
