@@ -1,0 +1,47 @@
+---
+title: "Projeto Econometria"
+author: "Rafael F. Bressan"
+date: "16 de outubro de 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Formulação do problema
+
+Formular o problema e a pergunta de pesquisa. Dada a pergunta a ser respondida é possível escolher o método econométrico a ser utilizado.
+
+## Limpeza e organização dos dados
+
+Tendo em vista o método a ser utilizado, limpar e organizar os dados. Fazer as transformações necessárias (i.e. log) nas variáveis e criar as dummies.
+
+## Análise exploratória
+
+- Scatter (y vs cada um dos X)
+- Boxplot (cada um dos X)
+- Estatísticas descritivas (separar variáveis quantitativas e qualitativas)
+- Matriz de correlações entre regressores
+
+Com essa análise é possível identificar a forma funcional do modelo: log-log, log-lin, termos quadráticos, etc.
+
+## Análise econométrica
+
+- MQO
+  1. Teste RESET para má especificação (`resettest`). Variáveis Instrumentais podem ser usadas para corrigir viés de omissão, erro de medida ou simultaneidade. Uma VI deve ter $cor(Z, X)\neq 0$ e $cor(Z, u) = 0$,
+  2. Teste de Haussman para endogeneidade. Este teste só é possível de ser feito se já houver suspeita de endogeneidade e um instrumento para a variável endógena,
+  3. Teste de heterocedasticidade de Breusch-Pagan (`bptest`). Fazer sempre regressão robusta,
+  4. Apresentar os resultados com estatísticas t, F, $\bar{R}^2$ e interpretá-los.
+
+- Painel
+  1. Escolher entre:
+    + _pooling_ (não controla efeitos não observáveis constantes no tempo), 
+    + efeitos fixos (nível da dummy de controle é perdido),
+    + efeitos aleatórios (desde que efeito não observado tenha média = 0 o estimador é consistente).
+  2. Comparar os três métodos
+  3. Aplicar as análises do MQO anterior
+  
+  ### Como escolher entre modelos de painel?
+  
+  - Teste de Hausman de painel (`phtest` do pacote `plm`)

@@ -11,19 +11,21 @@ knitr::opts_chunk$set(echo = TRUE)
 
 Site do livro: http://www.urfie.net/downloads.html
 
-```{r libraries}
+```{r libraries, include=FALSE}
 library(wooldridge) # Load data sets
 library(plm)
 library(estimatr)
 library(lmtest)
 library(car)
 library(MASS)
+library(AER) # ivreg
 library(tidyverse)
 library(pmdplyr)
 library(broom)
 library(forcats)
 library(purrr)
 library(stargazer)
+library(kableExtra)
 ```
 
 # Carregando os dados 
@@ -32,6 +34,8 @@ library(stargazer)
 data("gpa3")
 data("k401ksubs")
 data("hprice1")
+data("smoke")
+data("kielmc")
 ```
 
 # Análise descritiva
@@ -108,7 +112,7 @@ stargazer(coeftest(reg), coeftest(reg, vcov. = hccm), type = "html",
           title = "Regressão com erros padrão e robustos.")
 ```
 
-Teste F para black=white=0
+## Teste F para black=white=0
 
 ```{r teste-f, results = "asis"}
 myH0 <- c("black", "white")
@@ -158,3 +162,132 @@ orig <- hprice1 %>%
 resettest(orig)
 ```
 
+# Feasible GLS (variância desconhecida)
+
+```{r fgls, results = 'asis'}
+ols <- smoke %>% 
+  lm(cigs ~ log(income) + log(cigpric) + educ + age + I(age^2) + restaurn,
+     data = .)
+# BP test on OLS
+bptest(ols)
+
+# FGLS
+logu2 <- log(resid(ols)^2)
+yhat <- fitted(ols)
+yhat2 <- yhat^2
+
+# FGLS: regress log(u^2) on X
+varreg1 <- smoke %>% 
+  lm(logu2 ~ log(income) + log(cigpric) + educ + age + I(age^2) + restaurn,
+     data = .)
+# Weights will be 1/exp(logu2_fit)
+w1 <- 1 / exp(fitted(varreg1))
+# FGLS: OLS regression again, with weights
+fgls1 <- smoke %>% 
+  lm(cigs ~ log(income) + log(cigpric) + educ + age + I(age^2) + restaurn,
+     data = ., weights = w1)
+
+# FGLS: regress log(u^2) on yhat and yhat2
+varrreg2 <- lm(logu2 ~ yhat + yhat2)
+w2 <- 1 / exp(fitted(varrreg2))
+# FGLS: OLS regression again, with weights
+fgls2 <- smoke %>% 
+  lm(cigs ~ log(income) + log(cigpric) + educ + age + I(age^2) + restaurn,
+     data = ., weights = w2)
+
+stargazer(coeftest(ols), coeftest(fgls1), coeftest(fgls2),
+          type = "html",
+          no.space = TRUE,
+          align = TRUE,
+          column.labels = c("OLS", "FGLS1", "FGLS2"))
+```
+
+# Dados em Painel
+
+## Dois períodos: Dif-in-Dif
+
+Exemplo 13.3 de Wooldridge. Análise de decisão de políticas com agrupamentos de cortes tranversais. Será um modelo dif-in-dif com variável temporal e grupo de tratamento e controle antes e depois.
+
+Primeiro regressões separadas para cada ano de interesse: 1978 e 1981
+
+```{r dif-kiel, results = 'asis'}
+reg <- kielmc %>% 
+  group_by(year) %>% 
+  nest() %>% 
+  mutate(regression = map(data, ~lm(rprice ~ nearinc, data = .x)))
+
+stargazer(coeftest(reg$regression[[1]], vcov. = hccm), 
+          coeftest(reg$regression[[2]], vcov. = hccm),
+          type = "html",
+          no.space = TRUE,
+          align = TRUE,
+          column.labels = c("1978", "1981"))
+```
+
+Ambos intercepto e inclinação são diferentes entre os anos de 1978 e 1981. Pode-se estimar então um modelo com variável dummy para indicar o ano de 1981 e a interação desta dummy com a variável de tratamento `nearinc`.
+
+```{r dif-dif, results = 'asis'}
+dif_reg <- kielmc %>% 
+  lm(rprice ~ nearinc*y81, data = .)
+
+stargazer(coeftest(dif_reg, vcov. = hccm), 
+          type = "html",
+          no.space = TRUE,
+          align = TRUE,
+          column.labels = c("Dif-in-Dif"))
+```
+
+## Painéis longos
+
+Pooled
+
+```{r pooled, resutls = 'asis'}
+data("nls_panel", package = "PoEdata")
+nlspd <- pdata.frame(nls_panel, index = c("id", "year"))
+pdim(nlspd)
+
+wage.pooled <- nlspd %>% 
+  plm(lwage~educ+exper+I(exper^2)+tenure+I(tenure^2)+black+south+union, 
+  model = "pooling", 
+  data = .)
+
+tbl <- tidy(coeftest(wage.pooled, 
+                     vcov = vcovHC(wage.pooled, type = "HC0", cluster = "group")))
+kable(tbl, 
+      digits = 2, 
+      caption = "Pooled 'wage' model with cluster robust standard errors")
+```
+
+Efeitos Fixos considera que os interceptos de cada indivíduo podem ser diferentes. Uma desvantagem é que se perde qualquer variável explanatória que seja constante no tempo. Veja como educ e black não aparecem nos resultados.
+
+```{r within, resutls = 'asis'}
+data("nls_panel", package = "PoEdata")
+nlspd <- pdata.frame(nls_panel, index = c("id", "year"))
+pdim(nlspd)
+
+wage.within <- nlspd %>% 
+  plm(lwage~educ+exper+I(exper^2)+tenure+I(tenure^2)+black+south+union, 
+  model = "within", 
+  data = .)
+
+tbl <- tidy(coeftest(wage.within, 
+                     vcov = vcovHC(wage.within, type = "HC0", cluster = "group")))
+kable(tbl, 
+      digits = 2, 
+      caption = "Within 'wage' model with cluster robust standard errors")
+```
+
+Testing if fixed effets are necessary is to compare the fixed effects model wage.within with the pooled model wage.pooled. The function `pFtest()` do pacote `plm` does this comparison.
+
+```{r fe_pool_test, results = 'asis'}
+kable(tidy(pFtest(wage.within, wage.pooled)), 
+      caption = "Fixed effects test: Ho:'No fixed effects'")
+```
+
+Neste caso deve-se rejeitar a H0 que não há diferença nos interceptos dos indivíduos (efeitos fixos não observáveis).
+
+Efeitos Aleatórios
+
+
+
+Primeira Diferença

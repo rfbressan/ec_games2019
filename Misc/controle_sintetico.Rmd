@@ -1,0 +1,488 @@
+---
+title: "Technological disasters and stock returns"
+author: "A. Schmidt, F. Pozzobon, D. de Souza"
+date: "July, 2019"
+header-includes:
+   - \usepackage{bigints}
+   - \usepackage[brazil]{babel}
+   - \usepackage{graphicx}
+   - \usepackage{amsmath}
+output: html_document
+---
+
+# Introduction
+
+This code downloads and analyzes the data for the paper _"Technological disasters and stock returns: \\ a causal study of the mining disasters in Brazil."_ by [A. Schmidt](https://sites.google.com/view/aishameriane), F. Pozzobon and D. de Souza.
+
+My to-do list is:
+
+* Write an script to download the data from the [30 mining companies listed on NYSE](https://www.investing.com/stock-screener/?sp=country::5|sector::a|industry::16|equityType::a|exchange::1%3Ceq_market_cap;1);
+    * *Stretch goal*: get some control data, for example prices of mining ore, SP500 index
+* ~~Clear data to get the daily returns;~~ (FINISHED)
+    * ~~*Stretch goal*: Get the list of the calendar business days to make easier to cross with the disaster;~~ (NOT USEFUL)
+    * *Stretch goal*: Compare the prices of the Vale do Rio Doce stocks in B3 (former BM&F) and NYSE;
+* ~~Find the cut point in the series to split the data for two separate sets: one for the Mariana disaster (05/11/2015) and another for Brumadinho disaster (25/01/2019);~~ (FINISHED)
+* ~~Get the package and documentation for the synthetic control~~;
+* ~~Run the model for the whole dataset~~;
+* ~~Run the model for two subsets (near the disasters date)~~;
+* Run some cluster analysis (when I have more variables);
+* See if the differences (if exist) are equal between the two disasters.
+* Change from log returns to weekly prices;
+    * See if building an index using a specific date as basis some date (remember to justify this choice);
+    * Try as basis the average price of the month or year;
+    * ~~Create an index for the prices~~;
+* Calculate the same index but for Volume;
+* See if there is any difference calculating this indexes considering only the sample period for each disaster (at the cost of comparability, maybe?);
+* Increase the period pre-event in a proportion 3:1 to the post event period;
+* Build a spreadsheet and tutorial to get the information from ADVFN;
+* Check what's wrong with the beginning of 2016 where there was a massive decrease in returns for all companies.
+
+What I have been into (updated on 13/07/19):
+
+* 20/07 - I ran the code with weekly data for Mariana and got slight better results, but the placebo test shows no improvement. I think I need to adjust the volume and amplitude to indexes as well in order to get a better synthetic. I did this and Mariana's results got slightly better, but Brumadinho started to act strange. My last hope is to go back to daily returns.
+* 15-16/07 - Continued calculating the index and running the model again but considering weekly prices;
+* 13/07 - I forgot to update when I finished the term paper, but basically I stopped after running a model for each disaster using only data from BatchGetSymbols. I stopped at seeing it is possible to download weekly data. Now I have to locate the week corresponding to each disaster and adjust the code, as well as compute the price index as new variable.
+* 22/05 - After long hours of struggling I've found the error with my splitting that prevented me from running the synth routine in subsets of my original dataset. Using only the volume as predictor and the dataset streching from one month before and one month after each disaster the results are not very promising;
+* 20/05 - I finished running the synth() routine for the whole dataset;
+* 13/05 - I downloaded the stock info and calculated returns;
+* 13/05 - I downloaded volume to use as regressor;
+* 13/05 - I've read a bunch of stuff about Synth package.
+
+
+What to do next:
+
+* ~Make the plot with all grey lines and one bacl line;~
+* ~Make descriptives for the subsets;~
+* Subset more, i.e., divide in different points of time;
+* Try using the `gsynth` package;
+* Get more controls:
+    * I'm not sure if I'll be able to find more variables with daily values like the volume. One idea is to calculate the weekly returns.
+* ~~I'm trying to get the data frame right in order to build the synthetic Vale. What I need is:~~
+  * ~~A data frame where the first column is the unique code identifying the company, followed by the names,
+  the date and a correspondinng column with numerical indexes for the time, a column with volume (the predictor) and another with the price (the dependent)~~ (DONE)
+  * ~~A vector with the numbers of the controls~~ (DONE)
+  * ~~Know the number code for Vale~~ (DONE, 24)
+  * Get more variables from [ADVFN website](https://br.advfn.com/bolsa-de-valores/nyse/VALE/balanco?btn=quarterly_reports&mode=company_data) (EBITD, Fluxo de caixa livre por ação, etc) - We are going to need an assistant to get everything.
+  
+Ideas for new variables:
+
+* EBITDA
+* Fluxo de caixa livre por ação
+* Diferençã ou percentual do projetado e atingido
+* Receita
+* Lucro por ação
+
+Some links I crossed upon and might come in hand in the future:
+
+* Making tables in Markdown:
+    * https://www.displayr.com/formattable/?utm_medium=Feed&utm_source=Syndication
+    * https://www.jakeruss.com/cheatsheets/stargazer/#the-default-summary-statistics-table
+    * https://www.princeton.edu/~otorres/NiceOutputR.pdf
+    * https://cran.r-project.org/web/packages/kableExtra/vignettes/awesome_table_in_html.html
+    * https://people.ok.ubc.ca/jpither/modules/Tables_markdown.html
+    * https://rstudio-pubs-static.s3.amazonaws.com/132624_226026c074754b4484948fe3f70eceeb.html
+
+* `Quantmod` package (to get data):
+
+    * https://rstudio-pubs-static.s3.amazonaws.com/364194_96fa6ffa96d84b4ea95e831592214b97.html
+    * https://www.quantmod.com/examples/data/
+
+* Synthetic control in R
+    * https://towardsdatascience.com/causal-inference-using-difference-in-differences-causal-impact-and-synthetic-control-f8639c408268
+    * https://yiqingxu.org/software/gsynth/gsynth_examples.html
+    * http://rpubs.com/danilofreire/synth
+    * https://cran.r-project.org/web/packages/microsynth/vignettes/introduction.html
+    * https://yiqingxu.org/software/gsynth/gsynth_examples.html
+    * https://core.ac.uk/download/pdf/86439379.pdf
+    * https://aheblog.com/2017/11/02/method-of-the-month-synthetic-control/
+    * https://www.urban.org/sites/default/files/publication/89246/the_synthetic_control_method_as_a_tool_1.pdf
+
+## Downloading packages
+
+If mirror 10 ("UFRJ") is offline, try changing `ind = 10` to `ind = 1`. Do the same thing if you get an error installing the `BETS` package.
+
+```{r, warning = FALSE, message = FALSE}
+chooseCRANmirror(graphics = FALSE, ind = 10)
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(ggplot2, forecast, BETS, seasonal, seasonalview, lubridate, zoo, stargazer, gridExtra, reshape2, ggfortify, RColorBrewer, scales, quantmod, PerformanceAnalytics, strucchange, knitr, grid, ggpubr, gdata, vars, urca, compiler, DescTools, kableExtra, readxl, tseries, Synth, gsynth, SCtools) 
+```
+
+# Downloading and preparing data
+
+First, I need to get the symbols list, they are in a github repo.
+
+```{r, message = FALSE, warning = FALSE}
+sheet <- read.csv("https://raw.githubusercontent.com/aishameriane/Vale-Stock-and-Disasters/master/Mining%20companies%20listed%20on%20NYSE.csv?token=AAVGJTQXJQADIEF7Z27VUIK45PV7E")
+colnames(sheet)[1] <- "Name"
+sheet <- sheet[-c(18,19,5,21,27),] # for some reson the thing does not understand the -P notation for the preferential stocks, so for now I removed them
+# I also removed NexGen Energy (21) because it has more than 600 missing points
+# PLG has a HUGE outlier and was also removed
+symbols <- as.character(sheet[,2])
+```
+
+I removed the preferential stocks from Arconic and Mechel (lines 5 and 19), as well as Nexa Resources because the series started on Oct 2017.
+
+Other stock that may be a problem is VEDL because the series starts on 01/09/2013, but I'll wait before removing it. NexGen (NXE) starts on Aug, 2013. All others have at least 10 years of data, so I'm not removing them at all. 
+
+If we use weekly data, then we end up with 270 observations. The beginning of each week corresponds to the first observation. So if we download the data starting at **01-01-2014** (a Wednesday), then all the weeks will start on a Wednesday too. That is why I changed to start the data on **30-12-2013** and end on **04-03-2019**, which are Mondays.
+
+OBS: The Mariana disaster occurred on a Wednesday, so if I need to get two sets of data, I may download data from **02-01-2014** to **07-03-2019**.
+
+Using the data considering each week starting on a Monday, we have Mariana disaster happening in the middle of week that starts on **2015-11-02** (line 97) and Brumadinho disaster happening by the end of week that began at **2019-01-21** (line 265).
+
+I tested whether the code downloads the price of the day or the week. For example, downloading data weekly could indicate the weekly indicators. This is indeed the case. What happens when using weekly data is that the opening is from the first day. High, low and volume corresponds to the whole week and the closing is the closing value of the last day of the week.
+
+In order to create an index using the prices, I used the following equation:
+
+$$i_{it} = \frac{P_{it} - Min_i}{Max_i - Min_i}$$
+Where:
+
+* $i_{it}$ is the index for stock $i$ at period $t$ and it ranges from $0$ to $1$ (_maybe I need to reajust for each subset later to see if this compromises the results_);
+* $P_{it}$ is the $i$-th stock price at period $t$;
+* $Min_i$ is the minimum price for the stock $i$;
+* $Max_i$ is the maximum price for the stock $i$.
+
+Notice that when we are at the period with the maximum price $i_{it}$ equals one and when we are at the minimum, the numerator will be equal to $0$.
+
+```{r, message = FALSE, warning = FALSE}
+# getSymbols(symbols, src = 'yahoo', from = "2013-12-30", to = "2019-03-04", 
+#              auto.assign = TRUE, warnings = FALSE, periodicity = "weekly")
+
+getSymbols(symbols, src = 'yahoo', from = "2018-10-25", to = "2019-03-04", 
+             auto.assign = TRUE, warnings = FALSE, periodicity = "daily")
+
+prices <- merge(BHP, BBL, RIO, VALE, SCCO, FCX, ACH, ARNC, VEDL, AA, CCJ, TRQ, CLF, CMC, HBM, HSC, MTL, LAC, UEC, PLM, TGB, URG, UAMY, GMO, XPL)
+volume <- prices[,grepl( "Volume" , names(prices) )]
+amp_semanal   <- prices[,grepl( "Close" , names(prices) )] - prices[,grepl( "Open" , names(prices) )]
+amp_total    <- prices[,grepl( "High" , names(prices) )] - prices[,grepl( "Low" , names(prices) )]
+prices <- prices[,grepl( "Close" , names(prices) )]
+
+colnames(volume) <- as.character(sheet[,1])
+colnames(prices) <- as.character(sheet[,1])
+colnames(amp_semanal) <- as.character(sheet[,1])
+colnames(amp_total) <- as.character(sheet[,1])
+
+## I used this code when I was using log returns. For now I'll let this here
+#returns <- diff(log(prices))
+#n <- length(returns)
+#returns <- returns[-1,]
+#volume  <- volume[-1,]
+#amp_diaria <- amp_diaria[-1,]
+#amp_total <- amp_total[-1,]
+
+# I'm following this tutorial to calculate the index: https://www.datacamp.com/community/tutorials/r-tutorial-apply-family
+prices_min <- apply(prices, 2, min)
+prices_max <- apply(prices, 2, max)
+prices_amp <- prices_max - prices_min
+prices_index <- sweep(sweep(prices, 2, prices_min,"-"), 2, prices_amp,"/")
+
+volume_min <- apply(volume, 2, min)
+volume_max <- apply(volume, 2, max)
+volume_amp <- volume_max - volume_min
+volume_index <- sweep(sweep(volume, 2, volume_min,"-"), 2, volume_amp,"/")
+
+amp_semanal_min <- apply(prices, 2, min)
+amp_semanal_max <- apply(prices, 2, max)
+amp_semanal_amp <- amp_semanal_max - amp_semanal_min
+amp_semanal_index <- sweep(sweep(amp_semanal, 2, amp_semanal_min,"-"), 2, amp_semanal_amp,"/")
+
+amp_total_min <- apply(prices, 2, min)
+amp_total_max <- apply(prices, 2, max)
+amp_total_amp <- amp_total_max - amp_total_min
+amp_total_index <- sweep(sweep(amp_total, 2, amp_total_min,"-"), 2, amp_total_amp,"/")
+
+# This is lame and manual, I should update this later on
+colnames(volume) <- c("BHP", "BBL", "RIO", "VALE", "SCCO", "FCX", "ACH", "ARNC", "VEDL", "AA", "CCJ", "TRQ",
+				 "CLF", "CMC", "HBM", "HSC", "MTL", "LAC", "UEC", "PLM", "TGB", "URG", "UAMY", "GMO", "XPL")
+colnames(prices_index) <- c("BHP", "BBL", "RIO", "VALE", "SCCO", "FCX", "ACH", "ARNC", "VEDL", "AA", "CCJ", "TRQ",
+				 "CLF", "CMC", "HBM", "HSC", "MTL", "LAC", "UEC", "PLM", "TGB", "URG", "UAMY", "GMO", "XPL")
+colnames(amp_semanal) <- c("BHP", "BBL", "RIO", "VALE", "SCCO", "FCX", "ACH", "ARNC", "VEDL", "AA", "CCJ", "TRQ",
+				 "CLF", "CMC", "HBM", "HSC", "MTL", "LAC", "UEC", "PLM", "TGB", "URG", "UAMY", "GMO", "XPL")
+colnames(amp_total) <- c("BHP", "BBL", "RIO", "VALE", "SCCO", "FCX", "ACH", "ARNC", "VEDL", "AA", "CCJ", "TRQ",
+				 "CLF", "CMC", "HBM", "HSC", "MTL", "LAC", "UEC", "PLM", "TGB", "URG", "UAMY", "GMO", "XPL")
+colnames(amp_semanal_index) <- c("BHP", "BBL", "RIO", "VALE", "SCCO", "FCX", "ACH", "ARNC", "VEDL", "AA", "CCJ", "TRQ",
+				 "CLF", "CMC", "HBM", "HSC", "MTL", "LAC", "UEC", "PLM", "TGB", "URG", "UAMY", "GMO", "XPL")
+colnames(amp_total_index) <- c("BHP", "BBL", "RIO", "VALE", "SCCO", "FCX", "ACH", "ARNC", "VEDL", "AA", "CCJ", "TRQ",
+				 "CLF", "CMC", "HBM", "HSC", "MTL", "LAC", "UEC", "PLM", "TGB", "URG", "UAMY", "GMO", "XPL")
+colnames(volume_index) <- c("BHP", "BBL", "RIO", "VALE", "SCCO", "FCX", "ACH", "ARNC", "VEDL", "AA", "CCJ", "TRQ",
+				 "CLF", "CMC", "HBM", "HSC", "MTL", "LAC", "UEC", "PLM", "TGB", "URG", "UAMY", "GMO", "XPL")
+
+Data <- time(prices_index)
+prices_index <- data.frame(prices_index)
+volume  <- data.frame(volume)
+amp_semanal <- data.frame(amp_semanal)
+amp_total <- data.frame(amp_total)
+volume_index  <- data.frame(volume_index)
+amp_semanal_index <- data.frame(amp_semanal_index)
+amp_total_index <- data.frame(amp_total_index)
+
+prices_index$Data  <- Data
+volume$Data   <- Data
+amp_semanal$Data  <- Data
+amp_total$Data  <- Data
+volume_index$Data   <- Data
+amp_semanal_index$Data  <- Data
+amp_total_index$Data  <- Data
+
+prices_index_melt <- melt(data = prices_index, id.vars = "Data")
+volume_melt  <- melt(data = volume, id.vars = "Data")
+amp_semanal_melt  <- melt(data = amp_semanal, id.vars = "Data")
+amp_total_melt  <- melt(data = amp_total, id.vars = "Data")
+volume_index_melt  <- melt(data = volume_index, id.vars = "Data")
+amp_semanal_index_melt  <- melt(data = amp_semanal_index, id.vars = "Data")
+amp_total_index_melt  <- melt(data = amp_total_index, id.vars = "Data")
+
+
+names(prices_index_melt) <- c("Data", "Company", "Price_index")
+names(volume_melt) <- c("Data", "Company", "Volume")
+names(amp_semanal_melt) <- c("Data", "Company", "Weekly_Amp")
+names(amp_total_melt) <- c("Data", "Company", "Max_Amp")
+names(volume_index_melt) <- c("Data", "Company", "Volume")
+names(amp_semanal_index_melt) <- c("Data", "Company", "Weekly_Amp")
+names(amp_total_index_melt) <- c("Data", "Company", "Max_Amp")
+
+# It is possible to remove the _index to go back to the previous analysis
+data_frame <- merge(prices_index_melt, volume_index_melt, by = c("Data", "Company"))
+data_frame <- merge(data_frame, amp_total_index_melt,  by = c("Data", "Company"))
+data_frame <- merge(data_frame, amp_semanal_index_melt,  by = c("Data", "Company"))
+head(data_frame)
+
+Company_index <- unique(data_frame[,2])
+Company_index <- data.frame(Company_index, seq(1, length(Company_index), by = 1))
+head(Company_index)
+names(Company_index) <- c("Company", "Company_index")
+
+Date_index <- unique(prices_index[,26])
+Date_index <- data.frame(Date_index, seq(1, length(Date_index), by = 1))
+head(Date_index)
+names(Date_index) <- c("Data", "Date_index")
+
+data_frame2 <- merge(data_frame, Company_index, by = c("Company"))
+head(data_frame2)
+# Vale is the company number 23
+
+data_frame3 <- merge(data_frame2, Date_index, by = c("Data"))
+
+#Now I need a new vector with the controls
+
+Controles <- Company_index[-23,2]
+
+data_frame4 <- cbind(data_frame3[,8], data_frame3[,1:7])
+names(data_frame4)[1] <- ("Time")
+rm(data_frame3, data_frame2, data_frame)
+data_frame4$Company <- as.character(data_frame4$Company)
+```
+
+# Exploring the whole dataset
+
+```{r, message = FALSE, warning = FALSE} 
+cores <- brewer.pal(30, "Dark2")
+
+breakpoints_1 <- c(as.Date("2015-11-05"), as.Date("2019-01-25"))
+# Cada data entra separadamente
+bp1 <- c(which(data_frame4$Data == breakpoints_1[1]), 
+         which(data_frame4$Data == breakpoints_1[2]))
+bp1 <- bp1[c(1,(length(symbols)+1))]
+
+p4 <- ggplot(data_frame4, aes(Data, Price_index, colour = Company)) +
+        geom_line(show.legend=T)+
+        geom_vline(xintercept = breakpoints_1, linetype="longdash", size = 0.5, alpha = 0.35)+
+        annotate("text", x = breakpoints_1[1]+5, y = 1.5, label = paste0("Mariana Disaster"), size = 2.5)+
+        annotate("text", x = breakpoints_1[2]+5, y = 1.5, label = paste0("Brumadinho Disaster"), size = 2.5)+
+        theme_bw()
+p4 <- p4 + theme(axis.text.x = element_text(angle=25, hjust = 1, size = 6), axis.title.x = element_blank(), axis.title.y = element_text(size = 6), legend.text = element_text(size=6), legend.title = element_text(size=6), axis.text.y = element_text(size=6)) 
+p4
+
+# OK until here
+
+#pdf(file = "D:\\Onedrive - Aisha\\OneDrive\\Documentos\\Graduação Economia UDESC\\2019-1\\Estratégia em Finanças - Daniel\\Artigo da disciplina\\Fig_returns.pdf", width = 12, height = 6)
+#p4
+#dev.off()
+
+
+```
+
+# Now let's split the data between Brumadinho and Mariana
+
+## Mariana
+
+Splitting the dataset between 24/08/2015 (t=87) and 30/11/2015 (t=101). The disaster occured on 05/11/2015 (week of 02/11/2019). So we are going to use as split t=97 (02/11/2015).
+
+```{r, warning = FALSE, message = FALSE}
+mariana <- data_frame4[which(data_frame4$Data == '2015-08-05'):which(data_frame4$Data == '2015-12-07'),]
+mariana <- mariana[-nrow(mariana),] # I dont't know why, but always one stock comes to a further date.
+
+#mariana <- data_frame4
+
+dim(mariana)
+head(mariana)
+tail(mariana)
+
+# vale_controle <- dataprep(
+#   foo=mariana,
+#   predictors = c('Volume', 'Max_Amp', 'Weekly_Amp'), 
+#   predictors.op = 'mean',
+#   time.predictors.prior = 87:97,
+#   dependent = 'Price_index',
+#   unit.variable = 'Company_index',
+#   unit.names.variable = 'Company',
+#   time.variable = 'Time',
+#   treatment.identifier = 23,
+#   controls.identifier = Controles,
+#   time.optimize.ssr = 87:97,
+#   time.plot = 87:101)
+
+vale_controle <- dataprep(
+  foo=mariana,
+  predictors = c('Volume', 'Max_Amp', 'Weekly_Amp','Price_index'),
+  predictors.op = 'mean',
+  time.predictors.prior = 403:467,
+  dependent = 'Price_index',
+  unit.variable = 'Company_index',
+  unit.names.variable = 'Company',
+  time.variable = 'Time',
+  treatment.identifier = 23,
+  controls.identifier = Controles,
+  time.optimize.ssr = 403:467,
+  time.plot = 403:488)
+
+
+# vale_controle <- dataprep(
+#   foo=mariana,
+#   predictors = c('Volume', 'Max_Amp', 'Weekly_Amp', 'Price_index'),
+#   predictors.op = 'mean',
+#   time.predictors.prior = 1:66,
+#   dependent = 'Price_index',
+#   unit.variable = 'Company_index',
+#   unit.names.variable = 'Company',
+#   time.variable = 'Time',
+#   treatment.identifier = 23,
+#   controls.identifier = Controles,
+#   time.optimize.ssr = 1:66,
+#   time.plot = 1:86)
+
+out <- synth(data.prep.obj = vale_controle,optimxmethod = 'BFGS')
+
+tabelas <- synth.tab(synth.res = out,dataprep.res = vale_controle,round.digit = 3)
+print(tabelas)
+path_plot<-path.plot(synth.res = out,dataprep.res = vale_controle,Ylab = 'Retornos',Xlab='')
+gaps.plot(synth.res = out,dataprep.res = vale_controle,Main = '',Xlab = '',Ylab = 'gap entre Vale e Controle sintético')
+
+#stargazer(tabelas$tab.pred,type = 'html',title = 'estimado controle e tratado')
+#stargazer(tabelas$tab.v,type = 'html',title = 'Pesos das variáveis')
+
+#pdf(file = "D:\\Onedrive - Aisha\\OneDrive\\Documentos\\Graduação Economia UDESC\\2019-1\\Estratégia em Finanças - Daniel\\Artigo da disciplina\\Fig_valesynth.pdf", width = 12, height = 6)
+path.plot(synth.res    = out,
+          dataprep.res = vale_controle,
+          Ylab         = c("Returns"),
+          Xlab         = c(""),
+          Legend       = c("Vale","Synthetic"),
+          Legend.position = c("topleft")
+)
+abline(v=66, lty=2, lwd=3)
+#dev.off()
+
+#pdf(file = "D:\\Onedrive - Aisha\\OneDrive\\Documentos\\Graduação Economia UDESC\\2019-1\\Estratégia em Finanças - Daniel\\Artigo da disciplina\\Fig_valediff.pdf", width = 12, height = 6)
+gaps.plot(synth.res = out,dataprep.res = vale_controle,  Main = '',Xlab = '',Ylab = 'Difference  of returns')
+abline(v=97, lty=2, lwd=3)
+#dev.off()
+
+placebos <- generate.placebos(dataprep.out =  vale_controle, synth.out = out)
+
+#mspe.plot(placebos, discard.extreme = TRUE, mspe.limit = 20, plot.hist = FALSE)
+
+#pdf(file = "D:\\Onedrive - Aisha\\OneDrive\\Documentos\\Graduação Economia UDESC\\2019-1\\Estratégia em Finanças - Daniel\\Artigo da disciplina\\Fig_marianaplacebo.pdf", width = 12, height = 6)
+plot.placebos(placebos)
+#dev.off()
+```
+
+## Brumadinho
+
+Splitting the dataset between 12/11/2018 (t=255) and 25/02/2019 (t=270). The disaster occured on 25/01/2019. So we are going to use as split t=165 (21/01/2019).
+
+```{r, warning = FALSE, message = FALSE, eval = FALSE}
+brumadinho <- data_frame4[which(data_frame4$Data == '2018-10-25'):nrow(data_frame4),]
+
+dim(brumadinho)
+head(brumadinho)
+tail(brumadinho)
+
+#brumadinho <- data_frame4
+
+# vale_controle <- dataprep(
+#   foo=brumadinho,
+#   predictors = c('Volume', 'Max_Amp', 'Weekly_Amp'), 
+#   predictors.op = 'mean',
+#   time.predictors.prior = 255:265,
+#   dependent = 'Price_index',
+#   unit.variable = 'Company_index',
+#   unit.names.variable = 'Company',
+#   time.variable = 'Time',
+#   treatment.identifier = 23,
+#   controls.identifier = Controles,
+#   time.optimize.ssr = 255:265,
+#   time.plot = 255:270)
+
+vale_controle <- dataprep(
+  foo=brumadinho,
+  predictors = c('Volume', 'Max_Amp', 'Weekly_Amp', 'Price_index'),
+  predictors.op = 'mean',
+  time.predictors.prior = 1216:1277,
+  dependent = 'Price_index',
+  unit.variable = 'Company_index',
+  unit.names.variable = 'Company',
+  time.variable = 'Time',
+  treatment.identifier = 23,
+  controls.identifier = Controles,
+  time.optimize.ssr = 1216:1277,
+  time.plot = 1216:1301)
+
+# vale_controle <- dataprep(
+#   foo=brumadinho,
+#   predictors = c('Volume', 'Max_Amp', 'Weekly_Amp', 'Price_index'), 
+#   predictors.op = 'mean',
+#   time.predictors.prior = 1:62,
+#   dependent = 'Price_index',
+#   unit.variable = 'Company_index',
+#   unit.names.variable = 'Company',
+#   time.variable = 'Time',
+#   treatment.identifier = 23,
+#   controls.identifier = Controles,
+#   time.optimize.ssr = 1:62,
+#   time.plot = 1:86)
+
+out <- synth(data.prep.obj = vale_controle,optimxmethod = 'BFGS')
+
+tabelas <- synth.tab(synth.res = out,dataprep.res = vale_controle,round.digit = 3)
+print(tabelas)
+path_plot<-path.plot(synth.res = out,dataprep.res = vale_controle,Ylab = 'Retornos',Xlab='')
+gaps.plot(synth.res = out,dataprep.res = vale_controle,Main = '',Xlab = '',Ylab = 'gap entre Vale e Controle sintético')
+
+#stargazer(tabelas$tab.pred,type = 'html',title = 'estimado controle e tratado')
+#stargazer(tabelas$tab.v,type = 'html',title = 'Pesos das variáveis')
+
+#pdf(file = "D:\\Onedrive - Aisha\\OneDrive\\Documentos\\Graduação Economia UDESC\\2019-1\\Estratégia em Finanças - Daniel\\Artigo da disciplina\\Fig_brumasynth.pdf", width = 12, height = 6)
+path.plot(synth.res    = out,
+          dataprep.res = vale_controle,
+          Ylab         = c("Returns"),
+          Xlab         = c(""),
+          Legend       = c("Vale","Synthetic"),
+          Legend.position = c("topleft")
+)
+abline(v=62, lty=2, lwd=3)
+#dev.off()
+
+#pdf(file = "D:\\Onedrive - Aisha\\OneDrive\\Documentos\\Graduação Economia UDESC\\2019-1\\Estratégia em Finanças - Daniel\\Artigo da disciplina\\Fig_brumadiff.pdf", width = 12, height = 6)
+gaps.plot(synth.res = out,dataprep.res = vale_controle,  Main = '',Xlab = '',Ylab = 'Difference  of returns')
+abline(v=1274, lty=2, lwd=3)
+#dev.off()
+
+# Placebo
+placebos <- generate.placebos(dataprep.out =  na.omit(vale_controle), synth.out = na.omit(out))
+
+#mspe.plot(placebos, discard.extreme = TRUE, mspe.limit = 20, plot.hist = FALSE)
+
+#pdf(file = "D:\\Onedrive - Aisha\\OneDrive\\Documentos\\Graduação Economia UDESC\\2019-1\\Estratégia em Finanças - Daniel\\Artigo da disciplina\\Fig_brumaplacebo.pdf", width = 12, height = 6)
+plot.placebos(placebos)
+#dev.off()
+```

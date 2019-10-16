@@ -1,0 +1,200 @@
+---
+title: "Controle Sintetico"
+author: "Rafael F. Bressan"
+date: "11 de outubro de 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Carrega os pacotes necessários
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(lubridate, stargazer, gridExtra, kableExtra, readxl, Synth, 
+               gsynth, tidyquant, tidyverse) 
+```
+
+## Controle Sintético da VALE
+
+Usar o pacote `Synth` para fazer controle sintético.
+
+```{r get-symbols}
+sheet <- read_csv("https://raw.githubusercontent.com/aishameriane/Vale-Stock-and-Disasters/master/Mining%20companies%20listed%20on%20NYSE.csv?token=AAVGJTQXJQADIEF7Z27VUIK45PV7E")
+sheet <- sheet[-c(18,19,5,21,27),] # for some reson the thing does not understand the -P notation for the preferential stocks, so for now I removed them
+# I also removed NexGen Energy (21) because it has more than 600 missing points
+# PLG has a HUGE outlier and was also removed
+symbols <- sheet[,2]
+```
+
+```{r get-data}
+from <- "2018-10-25" 
+to <- "2019-03-04"
+evento <- "2019-01-25"
+
+prices <- tq_get(symbols, from = from, to = to) %>% 
+  # filter(Symbol != 'FCX') %>%  # removing FCX because it was weighted 1
+  group_by(Symbol) %>% 
+  mutate(scaled = as.vector(scale(adjusted, 
+                                  center = min(adjusted),
+                                  scale = max(adjusted) - min(adjusted))))
+sp500 <- tq_get("^GSPC", from = from, to = to) %>% 
+  mutate(sp_scaled = as.vector(scale(adjusted,
+                                     center = min(adjusted),
+                                     scale = max(adjusted) - min(adjusted)))) %>% 
+  select(date, sp_scaled)
+
+# All adjusted prices must be indexed to 1 at begining of series
+basis <- prices %>% 
+  filter(date == from) %>% 
+  select(Symbol, adjusted) %>% 
+  rename(basis = adjusted) %>% 
+  ungroup() %>% 
+  mutate(id_company = as.numeric(seq_len(nrow(.))))
+
+dates <- prices %>% 
+  ungroup() %>% 
+  distinct(date) %>% 
+  mutate(date_num = as.numeric(seq_len(nrow(.))))
+
+idx <- prices %>% 
+  ungroup() %>% 
+  left_join(basis, by = "Symbol") %>% 
+  left_join(dates, by = "date") %>% 
+  left_join(sp500, by = "date") %>% 
+  mutate(price_idx = adjusted / basis) %>% 
+  select(id_company, Symbol, date, date_num, volume, adjusted, price_idx, 
+         scaled, sp_scaled)
+```
+
+
+## Including Plots
+
+Evolução de todas as ações ao longo do tempo, em formato de índice. Índice = 1 em "2018-10-25".
+
+```{r idx-plot, echo=FALSE}
+breakpoints_1 <- c(as.Date("2015-11-05"), as.Date("2019-01-25"))
+ggplot(idx, aes(date, scaled, color = Symbol)) +
+  geom_line() +
+  geom_vline(xintercept = breakpoints_1, 
+             linetype = "longdash", size = 0.5, alpha = 0.35) +
+  theme_classic()
+```
+
+## Brumadinho
+
+Splitting the dataset between 12/11/2018 (t=255) and 25/02/2019 (t=270). The disaster occured on 25/01/2019. So we are going to use as split t=165 (21/01/2019).
+
+```{r split}
+ante <- idx %>% 
+  filter(date > as.Date(from) & date < as.Date(evento))
+post <- idx %>% 
+  filter(date >= as.Date(evento) & date <= as.Date(to))
+```
+
+Aplicando o controle sintético
+
+```{r synth}
+controles <- basis %>% 
+  filter(Symbol != 'VALE') %>% 
+  pull(id_company)
+tratamento <- basis %>% 
+  filter(Symbol == 'VALE') %>% 
+  pull(id_company)
+
+idx <- as.data.frame(idx) # dataprep não aceita tibble
+from_num <- dates %>% 
+  filter(date == from) %>% 
+  pull(date_num)
+to_num <- dates %>% 
+  filter(date == last(date)) %>% 
+  pull(date_num)
+evento_num <- dates %>% 
+  filter(date == evento) %>% 
+  pull(date_num)
+vale_controle <- dataprep(
+  foo = idx,
+  predictors = c('volume'),
+  predictors.op = 'mean',
+  unit.variable = 'id_company',
+  time.variable = 'date_num',
+  dependent = 'scaled',
+  unit.names.variable = 'Symbol',
+  treatment.identifier = tratamento,
+  controls.identifier = controles,
+  time.predictors.prior = from_num:(evento_num - 1),
+  time.optimize.ssr = from_num:evento_num,
+  time.plot = from_num:to_num
+)
+
+synth_out <- synth(vale_controle, optimxmethod = 'L-BFGS-B')
+```
+
+```{r tabelas, results = 'asis'}
+tabelas <- synth.tab(synth.res = synth_out,
+                     dataprep.res = vale_controle,
+                     round.digit = 3)
+print(tabelas)
+```
+
+```{r path-plot}
+path_plot <- path.plot(synth.res = synth_out,
+                       dataprep.res = vale_controle,
+                       tr.intake = evento_num,
+                       Ylab = 'Preços (índice)',
+                       Xlab = '')
+path_plot
+```
+
+```{r gaps-plot}
+gaps.plot(synth.res = synth_out,
+          dataprep.res = vale_controle,
+          tr.intake = evento_num,
+          Main = '',
+          Xlab = '',
+          Ylab = 'gap entre Vale e Controle sintético')
+```
+
+
+## TESTE com o dataset do pacote `Synth`
+
+```{r teste, results = 'asis'}
+data("synth.data")
+
+dataprep.out <-
+  dataprep(
+   foo = synth.data,
+   predictors = c("X1", "X2", "X3"),
+   predictors.op = "mean",
+   dependent = "Y",
+   unit.variable = "unit.num",
+   time.variable = "year",
+   special.predictors = list(
+      list("Y", 1991, "mean"),
+      list("Y", 1985, "mean"),
+      list("Y", 1980, "mean")
+                            ),
+   treatment.identifier = 7,
+   controls.identifier = c(29, 2, 13, 17, 32, 38),
+   time.predictors.prior = c(1984:1989),
+   time.optimize.ssr = c(1984:1990),
+   unit.names.variable = "name",
+   time.plot = 1984:1996
+   )
+
+synth.out <- synth(dataprep.out)
+
+synth.tables <- synth.tab(
+      dataprep.res = dataprep.out,
+      synth.res = synth.out)
+print(synth.tables)
+```
+
+```{r teste-path-plot}
+path.plot(dataprep.res = dataprep.out,
+          synth.res = synth.out,
+          tr.intake = 1990)
+```
+
+```{r teste-gap-plot}
+gaps.plot(dataprep.res = dataprep.out,synth.res = synth.out)
+```
