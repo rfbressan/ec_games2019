@@ -1,0 +1,111 @@
+---
+title: "eg_2019"
+author: "Rafael F. Bressan"
+date: "19 de outubro de 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(plm)
+library(estimatr)
+library(lmtest)
+library(car)
+library(MASS)
+library(AER) # ivreg
+library(tidyverse)
+library(pmdplyr)
+library(broom)
+library(forcats)
+library(purrr)
+library(stargazer)
+library(kableExtra)
+library(rio)
+```
+
+# ATENÇÃO: NADA NESSE SCRIPT SE APROVEITA MUITO
+
+SCRIPT DO GABRIEL CONTÉM O QUE REALMENTE FIZEMOS
+
+# Carregando os dados
+
+```{r dados}
+dados <- import("eg_data.csv") %>% 
+  mutate(tarifa = as.numeric(str_replace_all(TARIFA, ",", ".")),
+         distancia = as.numeric(str_replace_all(DIST, ",", ".")),
+         qav = as.numeric(str_replace_all(QAV, ",", ".")))
+```
+
+<!-- 
+# Item 1.i
+
+```{r item1i}
+dados1 <- dados %>% 
+  group_by(CIA, ROTA) %>% 
+  summarise(assentos = sum(ASSENTOS))
+assentos_total <- dados1 %>% 
+  summarise(total = sum(assentos))
+
+avg_mean <- dados1 %>% 
+  left_join(assentos_total, by = "CIA") %>% 
+  mutate(w = assentos / total)
+
+med_1i <- dados %>% 
+  left_join(avg_mean, by = c("CIA", "ROTA")) %>% 
+  mutate(tarifa_w = tarifa * w) %>% 
+  group_by(CIA, DATA) %>% 
+  summarise(med_pond = sum(tarifa_w))
+```
+
+# Plot Series
+
+```{r plot_1i}
+med_1i %>% 
+  ggplot(aes(x = DATA, y = med_pond, color = CIA)) +
+  geom_line()
+```
+
+/!-->
+
+# Item 1.ii
+
+```{r item1ii}
+med_1i <- import("data_tratamento_agrupado.csv") 
+
+med_12i <- med_1i %>% 
+  ungroup() %>% 
+  group_by(tratamento) %>% 
+  summarise(med2_pond = mean(weighted_income))
+```
+
+# Item 2
+
+```{r reg_2, results = 'asis'}
+reg2 <- lm(weighted_income ~ tratamento * CIA, data = med_1i)
+
+stargazer(coeftest(reg2), coeftest(reg2, vcov. = hccm), type = "html",
+          column.labels = c("Padrão", "Robusto"),
+          align = TRUE,
+          no.space = TRUE,
+          title = "Regressão com erros padrão e robustos.")
+```
+
+# Item 3
+
+```{r reg3, results = 'asis'}
+dados <- import("data_tratamento.csv")
+dados_querosene_mes <- dados %>% select(DATA, QAV) %>% distinct()
+modelo3 <- lm(TARIFA ~ CIA * tratamento + QAV*DIST, data = dados)
+coeftest(modelo3, vcov. = hccm)
+```
+
+# Teste no painel
+
+```{r painel}
+painel <- dados %>% 
+  mutate(indice = paste0(CIA, "-", ROTA)) %>% 
+  pdata.frame(index = c("indice", "DATA"))
+
+
+```
+

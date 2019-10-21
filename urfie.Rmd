@@ -26,6 +26,14 @@ library(forcats)
 library(purrr)
 library(stargazer)
 library(kableExtra)
+library(haven)
+```
+
+# Salvando dados para Stata
+
+```{r stata}
+dados <- read_csv("Misc/Mining companies listed on NYSE.csv")
+write_dta(dados, "Misc/mining.dta", version = 13)
 ```
 
 # Carregando os dados 
@@ -261,10 +269,6 @@ kable(tbl,
 Efeitos Fixos considera que os interceptos de cada indivíduo podem ser diferentes. Uma desvantagem é que se perde qualquer variável explanatória que seja constante no tempo. Veja como educ e black não aparecem nos resultados.
 
 ```{r within, resutls = 'asis'}
-data("nls_panel", package = "PoEdata")
-nlspd <- pdata.frame(nls_panel, index = c("id", "year"))
-pdim(nlspd)
-
 wage.within <- nlspd %>% 
   plm(lwage~educ+exper+I(exper^2)+tenure+I(tenure^2)+black+south+union, 
   model = "within", 
@@ -288,6 +292,43 @@ Neste caso deve-se rejeitar a H0 que não há diferença nos interceptos dos ind
 
 Efeitos Aleatórios
 
+```{r random, results = 'asis'}
+wage.random <- nlspd %>% 
+  plm(lwage~educ+exper+I(exper^2)+tenure+I(tenure^2)+black+south+union, 
+  model = "random",
+  random.method = "swar",
+  data = .)
+
+tbl <- tidy(coeftest(wage.random, 
+                     vcov = vcovHC(wage.random, type = "HC0", cluster = "group")))
+kable(tbl, 
+      digits = 2, 
+      caption = "Random 'wage' model with cluster robust standard errors")
+
+```
+
+Teste de Hausman para verificar a validade do uso de um modelo de efeitos aleatórios. O modelo EA supõe que a heterogeneidade é exógena e independente dos regressores, portanto o teste de Hausman é adequado.
+
+```{r phtest, results = 'asis'}
+kable(tidy(phtest(wage.within, wage.random)), 
+      caption = "Hausman endogeneity test for the random effects wage model")
+```
+
+The fixed effects model, however, does not allow time-invariant variables such as educ or black. Since the problem of the random effects model is endogeneity, one can use instrumental variables methods when time-invariant regressors must be in the model. The **Hausman-Taylor** estimator uses instrumental variables in a random effects model.
+
+In our wage model, suppose exper, tenure and union are time-varying exogenous, south is time-varying endogenous, black is time-invariant exogenous, and educ is time-invariant endogenous.
+
+```{r ht, resutls = 'asis'}
+wage.HT <- plm(lwage~educ+exper+I(exper^2)+tenure+I(tenure^2)+black+south+union |
+      exper+I(exper^2)+tenure+I(tenure^2)+union+black+msp+nev_mar,
+      data = nlspd, 
+      model = "random",
+      random.method = "ht",
+      inst.method = "baltagi")
+kable(tidy(wage.HT), 
+      digits = 5, 
+      caption = "Hausman-Taylor estimates for the wage equation")
+```
 
 
 Primeira Diferença
